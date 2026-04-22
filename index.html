@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Clicker 2026</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Firebase Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.95); }
+            100% { transform: scale(1); }
+        }
+        .animate-pop:active {
+            animation: pop 0.1s ease-in-out;
+        }
+        .floating-text {
+            position: absolute;
+            animation: floatUp 1s ease-out forwards;
+            pointer-events: none;
+            font-weight: bold;
+            color: #1e3a8a; 
+            z-index: 50;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+        @keyframes sparkle {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); filter: brightness(1.2); }
+        }
+        .animate-sparkle {
+            animation: sparkle 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header Section -->
+    <header class="bg-blue-900 text-white p-3 shadow-md z-10 flex flex-col gap-2 relative">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="ph-fill ph-flag text-2xl text-red-500"></i>
+                <h1 class="text-xl font-bold uppercase tracking-wider hidden sm:block">Campaign Clicker '26</h1>
+                <h1 class="text-xl font-bold uppercase tracking-wider sm:hidden">CC '26</h1>
+                <button onclick="openInfoModal()" class="ml-1 text-blue-300 hover:text-white transition-colors">
+                    <i class="ph-fill ph-info text-2xl"></i>
+                </button>
+            </div>
+            
+            <div class="flex gap-2 items-center">
+                <!-- VIP Credits Display -->
+                <div class="bg-slate-900 border border-amber-500/50 px-2 py-1.5 md:px-3 rounded-full flex items-center gap-1 shadow-inner cursor-pointer hover:bg-slate-800 transition-colors" onclick="switchTab('donor')">
+                    <i class="ph-fill ph-coin text-amber-400"></i>
+                    <span id="credits-display" class="font-black text-amber-300 text-sm md:text-base">0</span>
+                </div>
+
+                <!-- Premium Currency Display -->
+                <div class="bg-slate-900 border border-purple-500/50 px-2 py-1.5 md:px-3 rounded-full flex items-center gap-1 shadow-inner cursor-pointer hover:bg-slate-800 transition-colors" onclick="switchTab('donor')">
+                    <i class="ph-fill ph-briefcase text-purple-400"></i>
+                    <span id="dark-money-display" class="font-black text-purple-300 text-sm md:text-base">0</span>
+                </div>
+
+                <!-- Buy Seat Button -->
+                <button id="buy-seat-btn" onclick="buySeat()" class="bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold px-3 py-1.5 rounded shadow border border-amber-300 transition-all opacity-50 cursor-not-allowed flex items-center gap-2 text-sm">
+                    <i id="seat-btn-icon" class="ph-fill ph-bank text-lg"></i>
+                    <span id="seat-btn-text" class="hidden md:inline">Flip Senate Seat</span> (<span id="seat-cost-display">50k</span>)
+                </button>
+                <div class="text-base bg-blue-800 px-3 py-1.5 rounded border border-blue-700 font-bold shadow-inner hidden lg:block">
+                    <span id="seat-label">Senate:</span> <span id="seat-count" class="text-amber-400 text-lg">0</span><span id="seat-target" class="text-sm">/51</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Live Polling Bar -->
+        <div class="w-full bg-slate-900 rounded-full h-5 flex overflow-hidden border border-slate-950 shadow-inner relative">
+            <div class="absolute inset-0 flex justify-center items-center pointer-events-none z-10">
+                <span class="text-[10px] uppercase font-black tracking-widest text-white drop-shadow-md">National Polling Average</span>
+            </div>
+            <div id="poll-player" class="bg-blue-500 h-full transition-all duration-500" style="width: 50%"></div>
+            <div id="poll-opponent" class="bg-red-500 h-full transition-all duration-500" style="width: 50%"></div>
+        </div>
+    </header>
+
+    <!-- Event Banner -->
+    <div id="event-banner" class="bg-indigo-600 text-white text-xs md:text-sm font-bold px-4 py-2 flex justify-between items-center shadow-md">
+        <div class="flex items-center gap-2">
+            <i id="event-icon" class="ph-fill ph-map-pin animate-bounce"></i>
+            <span>Active Tour: <span id="event-name" class="text-amber-300">Loading...</span></span>
+            <span id="event-bonus" class="bg-indigo-800 px-2 py-0.5 rounded text-[10px] ml-2 border border-indigo-500">Bonus</span>
+        </div>
+        <div class="flex items-center gap-1 bg-black/20 px-2 py-1 rounded">
+            <i class="ph-fill ph-timer"></i>
+            <span id="event-timer" class="tracking-widest">00:00:00</span>
+        </div>
+    </div>
+
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        <!-- News Popup -->
+        <div id="news-popup" onclick="clickNews()" class="absolute top-8 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-xl shadow-2xl border-4 border-white cursor-pointer z-50 transition-all scale-0 opacity-0 hover:bg-red-500 flex items-center gap-3">
+            <i class="ph-fill ph-warning-circle text-3xl animate-pulse"></i>
+            <div>
+                <div class="font-black uppercase tracking-widest text-xs opacity-80">Breaking News</div>
+                <div class="font-bold">Opponent Scandal! Click to capitalize!</div>
+            </div>
+        </div>
+
+        <!-- Info Modal -->
+        <div id="info-modal" class="hidden absolute inset-0 bg-slate-900/80 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+                <div class="bg-blue-900 p-4 border-b border-blue-800 flex justify-between items-center text-white">
+                    <h3 class="font-bold flex items-center gap-2 text-lg">Campaign Briefing</h3>
+                    <button onclick="closeInfoModal()"><i class="ph-bold ph-x text-xl"></i></button>
+                </div>
+                <div class="p-6 space-y-6 overflow-y-auto text-sm text-slate-700">
+                    <div>
+                        <h4 class="font-black text-blue-900 uppercase mb-2 border-b">How to Play</h4>
+                        <ul class="space-y-2 list-disc pl-5">
+                            <li><strong>Rally:</strong> Tap the big checkmark for votes.</li>
+                            <li><strong>Upgrades:</strong> Build VPS (Votes Per Second) automatically.</li>
+                            <li><strong>Prestige:</strong> Win the Senate (51 seats) to unlock the House (218 districts) with a x10 Multiplier!</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-100"><button onclick="closeInfoModal()" class="w-full bg-slate-800 text-white font-bold py-2 rounded">Back to Campaign</button></div>
+            </div>
+        </div>
+
+        <!-- Checkout Modal -->
+        <div id="checkout-modal" class="hidden absolute inset-0 bg-slate-900/80 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden">
+                <div class="bg-slate-100 p-4 border-b flex justify-between items-center">
+                    <h3 class="font-bold flex items-center gap-2"><i class="ph-fill ph-lock-key text-green-600"></i> Secure Checkout</h3>
+                    <button onclick="closeCheckout()"><i class="ph-bold ph-x"></i></button>
+                </div>
+                <div class="p-6 space-y-4 text-center">
+                    <div class="flex justify-center gap-4 relative">
+                        <i class="ph-fill ph-briefcase text-6xl text-purple-500 animate-sparkle"></i>
+                        <i class="ph-fill ph-coin text-4xl text-amber-400 absolute -bottom-2 -right-2 drop-shadow-md"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-slate-500 uppercase tracking-widest" id="checkout-pkg-name">Package</p>
+                        <p class="text-3xl font-black text-slate-800" id="checkout-price">$0.00</p>
+                    </div>
+                    <button onclick="simulatePurchase()" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2">
+                        <i class="ph-bold ph-credit-card"></i> Pay Securely
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prestige Modal -->
+        <div id="prestige-modal" class="hidden absolute inset-0 bg-slate-900/90 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border-4 border-amber-400 text-center">
+                <div class="bg-blue-900 p-6 text-white">
+                    <i class="ph-fill ph-check-circle text-6xl text-green-400 mb-2"></i>
+                    <h2 class="text-3xl font-black uppercase">Senate Secured!</h2>
+                </div>
+                <div class="p-6 space-y-4 bg-slate-50">
+                    <p class="text-slate-700 font-bold">Launch the House campaign for a permanent <span class="text-xl text-amber-600">x10 Multiplier</span>!</p>
+                    <button onclick="startHouseCampaign()" class="w-full bg-blue-600 text-white font-black py-4 rounded-lg shadow-md hover:scale-105 transition-all">Launch House Campaign</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Interface -->
+        <section class="flex-1 p-6 flex flex-col items-center justify-center bg-slate-200 border-r border-slate-300 relative overflow-y-auto" id="click-area">
+            <h2 class="text-2xl font-semibold text-slate-500 mb-2 mt-auto uppercase tracking-wider">Total Votes</h2>
+            <div id="vote-count" class="text-7xl font-black text-blue-900 mb-2 drop-shadow-sm">0</div>
+            <div class="text-slate-600 font-medium mb-8 flex flex-col items-center">
+                <div><span id="vps-count" class="text-green-700 font-black text-lg">0</span> Votes Per Second</div>
+                <div class="flex gap-2 mt-2 flex-wrap justify-center">
+                    <div id="multiplier-badge" class="hidden bg-purple-200 text-purple-800 text-xs font-bold px-2 py-1 rounded border border-purple-300">Shop: x<span id="multiplier-display">1</span></div>
+                    <div id="prestige-badge" class="hidden bg-blue-200 text-blue-800 text-xs font-bold px-2 py-1 rounded border border-blue-400">Majority: x<span id="prestige-display">10</span></div>
+                    <div id="vip-badge" class="hidden bg-amber-200 text-amber-900 text-xs font-bold px-2 py-1 rounded border border-amber-400">VIP: x<span id="vip-display">5</span></div>
+                </div>
+            </div>
+
+            <button id="main-click-btn" class="relative group outline-none animate-pop" onclick="recordClick(event)">
+                <div class="absolute inset-0 bg-red-600 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-200"></div>
+                <div class="relative bg-gradient-to-b from-blue-700 to-blue-900 border-4 border-white shadow-xl rounded-full w-40 h-40 flex items-center justify-center cursor-pointer text-white hover:scale-105 transition-transform">
+                    <i class="ph-fill ph-check-circle text-7xl"></i>
+                </div>
+            </button>
+            <p class="mt-4 text-sm text-slate-500 font-bold uppercase">Tap to rally supporters</p>
+
+            <div class="mt-auto pt-8 w-full max-w-md pb-4">
+                <div class="flex justify-between items-end mb-2">
+                    <h3 id="map-title" class="text-sm font-bold text-slate-600 uppercase tracking-widest">Senate Floor Tracker</h3>
+                    <span class="text-xs font-bold text-slate-500"><span id="map-remaining">51</span> Needed</span>
+                </div>
+                <div id="map-container" class="flex flex-wrap gap-1 p-3 bg-slate-300 rounded-xl justify-center border border-slate-400 max-h-48 overflow-y-auto"></div>
+            </div>
+        </section>
+
+        <!-- Sidebar / Store -->
+        <section class="w-full md:w-[400px] bg-white overflow-y-auto flex flex-col shadow-inner">
+            <div class="p-4 bg-slate-50 border-b sticky top-0 z-10 flex flex-col gap-3 shadow-sm">
+                <h3 class="text-lg font-bold">Campaign HQ</h3>
+                <div class="flex gap-1 bg-slate-200 p-1 rounded-lg overflow-x-auto">
+                    <button onclick="switchTab('grassroots')" id="tab-grassroots" class="flex-1 py-1.5 px-2 text-xs font-bold bg-white text-blue-800 rounded">Grassroots</button>
+                    <button onclick="switchTab('superpac')" id="tab-superpac" class="flex-1 py-1.5 px-2 text-xs font-bold text-slate-500 rounded">Super PACs</button>
+                    <button onclick="switchTab('donor')" id="tab-donor" class="flex-1 py-1.5 px-2 text-xs font-bold text-purple-600 rounded flex items-center justify-center gap-1"><i class="ph-fill ph-shopping-cart"></i> Shop</button>
+                </div>
+            </div>
+            <div id="upgrades-container" class="p-4 space-y-3 pb-6"></div>
+        </section>
+
+    </main>
+
+    <script>
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyB2N7B8pj2YyIOmHq2z1ktjRUj4LCO0sIo",
+            authDomain: "senatemajoritytracker.firebaseapp.com",
+            projectId: "senatemajoritytracker",
+            storageBucket: "senatemajoritytracker.firebasestorage.app",
+            messagingSenderId: "717819077613",
+            appId: "1:717819077613:web:b86e715de46c5e35f9fde4"
+        };
+
+        // Initialize Firebase
+        let db = null; let auth = null; let userId = null;
+        if (firebaseConfig.apiKey) {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+            auth.onAuthStateChanged((user) => { if (user) { userId = user.uid; loadFromCloud(); listenForRewards(); } else { auth.signInAnonymously(); } });
+        }
+
+        // Add this to listen for successful purchases from the webhook
+        function listenForRewards() {
+            if (!db || !userId) return;
+            db.collection('artifacts').doc('campaign-clicker').collection('users').doc(userId).collection('rewards')
+              .where('claimed', '==', false)
+              .onSnapshot(snapshot => {
+                  snapshot.docChanges().forEach(change => {
+                      if (change.type === 'added') {
+                          const reward = change.doc.data();
+                          
+                          // Give the player the currency
+                          state.darkMoney += reward.darkMoney || 0;
+                          state.credits += reward.credits || 0;
+                          
+                          // Show a popup
+                          createFloatingText(window.innerWidth/2, window.innerHeight/2, `PAYMENT SUCCESS! +${reward.darkMoney} DM`);
+                          
+                          // Update UI and Save
+                          updateUI();
+                          if(state.currentTab === 'donor') renderDonorShop();
+                          saveGame();
+                          
+                          // Mark as claimed so they don't get it twice
+                          change.doc.ref.update({ claimed: true });
+                      }
+                  });
+              }, error => console.error("Reward listener error:", error));
+        }
+
+        // --- GAME STATE ---
+        let state = {
+            votes: 0, clickPower: 1, vps: 0, campaignPhase: 'senate', seats: 0, houseSeats: 0,
+            prestigeMultiplier: 1.0, opponentVotes: 100, opponentVps: 2, currentTab: 'grassroots',
+            darkMoney: 0, credits: 0, globalMultiplier: 1.0, vipMultiplier: 1.0 
+        };
+
+        // --- DOM CACHE (FIXED: Restored missing variables) ---
+        const voteCountEl = document.getElementById('vote-count');
+        const vpsCountEl = document.getElementById('vps-count');
+        const darkMoneyEl = document.getElementById('dark-money-display');
+        const creditsEl = document.getElementById('credits-display');
+        const upgradesContainer = document.getElementById('upgrades-container');
+        const pollPlayerEl = document.getElementById('poll-player');
+        const pollOpponentEl = document.getElementById('poll-opponent');
+        const seatCountEl = document.getElementById('seat-count');
+        const seatCostDisplay = document.getElementById('seat-cost-display');
+        const buySeatBtn = document.getElementById('buy-seat-btn');
+        const mapContainer = document.getElementById('map-container');
+        const mapRemaining = document.getElementById('map-remaining');
+        const prestigeModal = document.getElementById('prestige-modal');
+        const newsPopup = document.getElementById('news-popup');
+        const checkoutModal = document.getElementById('checkout-modal');
+        const infoModal = document.getElementById('info-modal');
+
+        // --- DATA ARRAYS ---
+        const events = [
+            { id: 'rust_belt', name: "Rust Belt Tour", icon: "ph-factory", bonusType: "click", multiplier: 2.0, desc: "2x Manual Click Power" },
+            { id: 'sun_belt', name: "Sun Belt Strategy", icon: "ph-sun", bonusType: "vps", multiplier: 1.5, desc: "1.5x Automated VPS" },
+            { id: 'coastal', name: "Coastal Fundraisers", icon: "ph-waves", bonusType: "discount_pac", multiplier: 0.8, desc: "20% Cheaper Super PACs" },
+            { id: 'midwest', name: "Midwest Diner Run", icon: "ph-coffee", bonusType: "all", multiplier: 1.5, desc: "+50% Clicks & VPS" },
+            { id: 'debate', name: "Debate Prep Week", icon: "ph-microphone-stage", bonusType: "opponent_weak", multiplier: 0.5, desc: "Opponent generates 50% fewer votes" },
+            { id: 'convention', name: "National Convention", icon: "ph-confetti", bonusType: "discount_all", multiplier: 0.9, desc: "10% Discount on everything" }
+        ];
+        let currentEvent = null;
+
+        const allStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
+        let unownedStates = [...allStates];
+        let ownedStates = [];
+
+        let grassrootsUpgrades = [];
+        let superPacUpgrades = [];
+
+        function initializeUpgrades() {
+            grassrootsUpgrades = [
+                { id: 'yard_sign', name: "Yard Sign", description: "Local visibility.", baseCost: 15, vpsBonus: 1, owned: 0, icon: "ph-signpost" },
+                { id: 'flyer', name: "Mail Campaign", description: "Spreading the word.", baseCost: 100, vpsBonus: 5, owned: 0, icon: "ph-envelope-simple-open" },
+                { id: 'megaphone', name: "Street Megaphone", description: "Loud and clear.", baseCost: 500, vpsBonus: 20, owned: 0, icon: "ph-megaphone" },
+                { id: 'radio', name: "Radio Ad", description: "Reaching commuters.", baseCost: 3000, vpsBonus: 100, owned: 0, icon: "ph-radio" },
+                { id: 'rally', name: "Townhall Rally", description: "Fired up the base.", baseCost: 10000, vpsBonus: 400, owned: 0, icon: "ph-users-three" }
+            ];
+            superPacUpgrades = [
+                { id: 'tech_ceo', name: "Tech Endorsement", description: "Algorithm manipulation.", baseCost: 100000, vpsBonus: 5000, owned: 0, icon: "ph-robot" },
+                { id: 'dark_money', name: "Dark Money Network", description: "Untraceable ad blitz.", baseCost: 500000, vpsBonus: 25000, owned: 0, icon: "ph-bank" },
+                { id: 'tv_network', name: "Buy a TV Network", description: "Total narrative control.", baseCost: 2500000, vpsBonus: 100000, owned: 0, icon: "ph-television" }
+            ];
+        }
+        initializeUpgrades(); 
+
+       const fiatPackages = [
+            { id: 'dm_pack_1', name: "Briefcase", amount: 100, credits: 2, price: 1.99, icon: "ph-briefcase", url: "https://buy.stripe.com/test_6oUdR98e4dYe1gZ8jQdIA01" },
+            { id: 'dm_pack_2', name: "Offshore Account", amount: 600, credits: 10, price: 9.99, icon: "ph-safe", tag: "BEST VALUE", url: "https://buy.stripe.com/test_28EfZh65W7zQ4tbdEadIA02" },
+            { id: 'dm_pack_3', name: "Swiss Bank", amount: 4000, credits: 50, price: 49.99, icon: "ph-bank", tag: "WHALE TIER", url: "https://buy.stripe.com/test_28EfZh65W7zQ4tbdEadIA02" }
+        ];
+
+        const premiumItems = [
+            { id: 'warp_1hr', name: "1-Hour Blitz", desc: "Gain 1 hour of VPS instantly.", cost: 100, type: "warp", value: 3600, icon: "ph-clock-fast" },
+            { id: 'warp_24hr', name: "24-Hour Blitz", desc: "Gain 24 hours of VPS instantly.", cost: 1000, type: "warp", value: 86400, icon: "ph-rocket-launch" },
+            { id: 'golden_mic', name: "Golden Megaphone", desc: "Permanent x2 VPS multiplier.", cost: 2500, type: "multiplier", value: 2.0, icon: "ph-megaphone", limit: 1, owned: 0 }
+        ];
+
+        const vipItems = [
+            { id: 'vip_autoclick', name: "Auto-Lobbyist", desc: "5 auto-clicks per second.", cost: 10, type: "autoclick", icon: "ph-robot", limit: 1, owned: 0 },
+            { id: 'vip_incumbent', name: "Incumbent Advantage", desc: "Start House with 5M votes.", cost: 25, type: "headstart", icon: "ph-star", limit: 1, owned: 0 },
+            { id: 'vip_media', name: "Media Empire", desc: "Permanent x5 Global Multiplier.", cost: 50, type: "multiplier", value: 5.0, icon: "ph-broadcast", limit: 1, owned: 0 }
+        ];
+
+        // --- CORE FUNCTIONS ---
+        function calculateActiveEvent() {
+            const DAY_MS = 86400000; const EVENT_DURATION = 3 * DAY_MS; const EPOCH = new Date("2024-01-01T00:00:00Z").getTime(); 
+            const now = Date.now(); const timePassed = now - EPOCH;
+            currentEvent = events[Math.floor(timePassed / EVENT_DURATION) % events.length];
+            const msRemaining = EVENT_DURATION - (timePassed % EVENT_DURATION);
+            let h = Math.floor(msRemaining / 3600000); let m = Math.floor((msRemaining % 3600000) / 60000); let s = Math.floor((msRemaining % 60000) / 1000);
+            document.getElementById('event-timer').innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            document.getElementById('event-name').innerText = currentEvent.name;
+            document.getElementById('event-bonus').innerText = currentEvent.desc;
+            document.getElementById('event-icon').className = `ph-fill ${currentEvent.icon} animate-bounce`;
+        }
+
+        function calculateVPS() {
+            let total = 0;
+            grassrootsUpgrades.forEach(u => total += (u.owned * u.vpsBonus));
+            superPacUpgrades.forEach(u => total += (u.owned * u.vpsBonus));
+            if (currentEvent && (currentEvent.bonusType === 'vps' || currentEvent.bonusType === 'all')) total *= currentEvent.multiplier;
+            total = total * state.globalMultiplier * state.prestigeMultiplier * state.vipMultiplier;
+            state.vps = total;
+            let clickBase = 1 + Math.floor(state.vps * 0.01);
+            if (currentEvent && (currentEvent.bonusType === 'click' || currentEvent.bonusType === 'all')) clickBase *= currentEvent.multiplier;
+            state.clickPower = clickBase * state.globalMultiplier * state.prestigeMultiplier * state.vipMultiplier;
+        }
+
+        function getCost(upgrade) {
+            let base = Math.floor(upgrade.baseCost * Math.pow(1.15, upgrade.owned));
+            if (currentEvent && currentEvent.bonusType === 'discount_pac' && superPacUpgrades.includes(upgrade)) base *= currentEvent.multiplier;
+            if (currentEvent && currentEvent.bonusType === 'discount_all') base *= currentEvent.multiplier;
+            return Math.floor(base);
+        }
+
+        function recordClick(event) {
+            state.votes += state.clickPower;
+            updateUI();
+            let x = event ? event.clientX : window.innerWidth/2;
+            let y = event ? event.clientY : window.innerHeight/2;
+            if (!event) { const b = document.getElementById('main-click-btn').getBoundingClientRect(); x = b.left + b.width/2; y = b.top + b.height/2; }
+            createFloatingText(x, y, `+${Math.floor(state.clickPower)}`);
+        }
+
+        function buyUpgrade(index) {
+            const arr = state.currentTab === 'grassroots' ? grassrootsUpgrades : superPacUpgrades;
+            const u = arr[index]; const c = getCost(u);
+            if (state.votes >= c) { state.votes -= c; u.owned++; calculateVPS(); renderUpgrades(); updateUI(); }
+        }
+
+        function getSeatCost() {
+            if (state.campaignPhase === 'senate') return Math.floor(50000 * Math.pow(1.32, state.seats));
+            return Math.floor(1000000 * Math.pow(1.12, state.houseSeats));
+        }
+
+        function buySeat() {
+            const cost = getSeatCost();
+            if (state.campaignPhase === 'senate' && state.votes >= cost && state.seats < 51) {
+                state.votes -= cost; state.seats++;
+                ownedStates.push(unownedStates.splice(Math.floor(Math.random()*unownedStates.length),1)[0]);
+                if (state.seats >= 51) prestigeModal.classList.remove('hidden');
+            } else if (state.campaignPhase === 'house' && state.votes >= cost && state.houseSeats < 218) {
+                state.votes -= cost; state.houseSeats++;
+            }
+            updateUI(); renderMap();
+        }
+
+        function startHouseCampaign() {
+            const inc = vipItems.find(i => i.id === 'vip_incumbent');
+            state.votes = (inc && inc.owned > 0) ? 5000000 : 0;
+            state.opponentVotes = 100; state.opponentVps = 2; initializeUpgrades();
+            state.prestigeMultiplier *= 10; state.campaignPhase = 'house';
+            document.getElementById('seat-label').innerText = "House:";
+            document.getElementById('seat-target').innerText = "/218";
+            document.getElementById('map-title').innerText = "House Floor Tracker";
+            prestigeModal.classList.add('hidden');
+            updateUI(); renderMap(); saveGame();
+        }
+
+        // --- UI RENDERERS ---
+        function switchTab(t) {
+            state.currentTab = t;
+            const g = document.getElementById('tab-grassroots'), s = document.getElementById('tab-superpac'), d = document.getElementById('tab-donor');
+            [g,s,d].forEach(el => el.className = "flex-1 py-1.5 px-2 text-xs font-bold text-slate-500 rounded");
+            if(t === 'donor') { d.className = "flex-1 py-1.5 px-2 text-xs font-bold text-white bg-purple-600 rounded"; renderDonorShop(); } 
+            else { document.getElementById('tab-'+t).className = "flex-1 py-1.5 px-2 text-xs font-bold bg-white text-blue-800 rounded shadow-sm"; renderUpgrades(); }
+        }
+
+        function renderMap() {
+            mapContainer.innerHTML = '';
+            if (state.campaignPhase === 'senate') {
+                mapRemaining.innerText = (51 - state.seats);
+                allStates.forEach(st => {
+                    const div = document.createElement('div');
+                    div.className = `w-7 h-7 flex items-center justify-center text-[10px] font-black rounded-sm border ${ownedStates.includes(st) ? 'bg-blue-600 text-white' : 'bg-slate-400 opacity-80'}`;
+                    div.innerText = st; mapContainer.appendChild(div);
+                });
+            } else {
+                mapRemaining.innerText = (218 - state.houseSeats);
+                for (let i=0; i<435; i++) {
+                    const dot = document.createElement('div');
+                    dot.className = `w-2 h-2 rounded-sm ${i < state.houseSeats ? 'bg-blue-600' : 'bg-slate-400 opacity-50'}`;
+                    mapContainer.appendChild(dot);
+                }
+            }
+        }
+
+        function renderUpgrades() {
+            upgradesContainer.innerHTML = ''; 
+            const activeArray = state.currentTab === 'grassroots' ? grassrootsUpgrades : superPacUpgrades;
+
+            activeArray.forEach((u, index) => {
+                const cost = getCost(u);
+                const affordable = state.votes >= cost;
+                
+                const btn = document.createElement('button');
+                btn.onclick = () => buyUpgrade(index);
+                btn.id = `upgrade-btn-${index}`;
+                
+                btn.className = `w-full text-left p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                    affordable ? 'bg-white border-blue-200 hover:bg-blue-50 cursor-pointer shadow-sm' : 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed'
+                }`;
+
+                btn.innerHTML = `
+                    <div class="${state.currentTab === 'grassroots' ? 'bg-blue-100 text-blue-800' : 'bg-slate-800 text-amber-400'} p-2 rounded-lg flex-shrink-0 transition-colors">
+                        <i class="ph-fill ${u.icon} text-2xl"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold text-slate-800 transition-colors">${u.name}</h4>
+                            <span class="text-sm font-black text-slate-400">x${u.owned}</span>
+                        </div>
+                        <p class="text-xs text-slate-500 transition-colors">${u.description} (+${u.vpsBonus} VPS)</p>
+                        <p id="upgrade-cost-${index}" class="text-sm font-bold mt-1 ${affordable ? 'text-green-600' : 'text-red-500'}">Cost: ${cost.toLocaleString()}</p>
+                    </div>
+                `;
+                upgradesContainer.appendChild(btn);
+            });
+        }
+
+        function renderDonorShop() {
+            upgradesContainer.innerHTML = '';
+            
+            const vipHeader = document.createElement('h4');
+            vipHeader.className = "font-black text-amber-500 text-xs uppercase tracking-widest mb-2 mt-2";
+            vipHeader.innerText = "VIP Backroom";
+            upgradesContainer.appendChild(vipHeader);
+            
+            vipItems.forEach(item => {
+                const affordable = state.credits >= item.cost;
+                const isMaxed = item.limit && item.owned >= item.limit;
+                
+                const btn = document.createElement('button');
+                btn.onclick = () => buyVipItem(item.id);
+                btn.id = `vip-btn-${item.id}`; 
+                btn.disabled = isMaxed || !affordable;
+                
+                btn.className = `w-full text-left p-3 rounded-lg border-2 transition-all mb-2 flex items-center gap-3 ${
+                    isMaxed ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' :
+                    affordable ? 'bg-amber-50 border-amber-200 hover:bg-amber-100 cursor-pointer shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                }`;
+
+                btn.innerHTML = `
+                    <div class="${isMaxed ? 'bg-slate-300 text-slate-500' : 'bg-amber-500 text-white'} p-2 rounded-lg flex-shrink-0 shadow-inner">
+                        <i class="ph-fill ${item.icon} text-2xl"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold ${isMaxed ? 'text-slate-500 line-through' : 'text-slate-800'}">${item.name}</h4>
+                            ${isMaxed ? `<span class="text-xs font-black text-slate-400 bg-slate-200 px-1 rounded">OWNED</span>` : ''}
+                        </div>
+                        <p class="text-xs text-slate-500 leading-tight mb-1 mt-0.5">${item.desc}</p>
+                        <p id="vip-cost-${item.id}" class="text-sm font-bold flex items-center gap-1 ${affordable && !isMaxed ? 'text-amber-600' : 'text-slate-400'}">
+                            <i class="ph-fill ph-coin"></i> ${item.cost}
+                        </p>
+                    </div>
+                `;
+                upgradesContainer.appendChild(btn);
+            });
+
+            const premiumHeader = document.createElement('h4');
+            premiumHeader.className = "font-black text-purple-500 text-xs uppercase tracking-widest mb-2 mt-4 pt-4 border-t border-slate-200";
+            premiumHeader.innerText = "Campaign Boosts";
+            upgradesContainer.appendChild(premiumHeader);
+            
+            premiumItems.forEach(item => {
+                const affordable = state.darkMoney >= item.cost;
+                const isMaxed = item.limit && item.owned >= item.limit;
+                
+                const btn = document.createElement('button');
+                btn.onclick = () => buyPremiumItem(item.id);
+                btn.id = `premium-btn-${item.id}`; 
+                btn.disabled = isMaxed || !affordable;
+                
+                btn.className = `w-full text-left p-3 rounded-lg border-2 transition-all mb-2 flex items-center gap-3 ${
+                    isMaxed ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' :
+                    affordable ? 'bg-purple-50 border-purple-200 hover:bg-purple-100 cursor-pointer shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                }`;
+
+                btn.innerHTML = `
+                    <div class="${isMaxed ? 'bg-slate-300 text-slate-500' : 'bg-purple-600 text-white'} p-2 rounded-lg flex-shrink-0 shadow-inner">
+                        <i class="ph-fill ${item.icon} text-2xl"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold ${isMaxed ? 'text-slate-500 line-through' : 'text-slate-800'}">${item.name}</h4>
+                            ${isMaxed ? `<span class="text-xs font-black text-slate-400 bg-slate-200 px-1 rounded">MAXED</span>` : ''}
+                        </div>
+                        <p class="text-xs text-slate-500 leading-tight mb-1 mt-0.5">${item.desc}</p>
+                        <p id="premium-cost-${item.id}" class="text-sm font-bold flex items-center gap-1 ${affordable && !isMaxed ? 'text-purple-600' : 'text-slate-400'}">
+                            <i class="ph-fill ph-briefcase"></i> ${item.cost}
+                        </p>
+                    </div>
+                `;
+                upgradesContainer.appendChild(btn);
+            });
+
+            const fiatHeader = document.createElement('h4');
+            fiatHeader.className = "font-black text-slate-500 text-xs uppercase tracking-widest mb-2 mt-4 pt-4 border-t border-slate-200";
+            fiatHeader.innerText = "Fund Account";
+            upgradesContainer.appendChild(fiatHeader);
+            
+            fiatPackages.forEach(pkg => {
+                const btn = document.createElement('button');
+                btn.onclick = () => openCheckout(pkg.id);
+                btn.className = `w-full text-left p-3 rounded-lg border-2 border-slate-200 bg-white hover:border-purple-300 hover:bg-slate-50 transition-all flex justify-between items-center group relative overflow-hidden mb-2`;
+
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3 relative z-10">
+                        <div class="text-purple-500 group-hover:scale-110 transition-transform"><i class="ph-fill ${pkg.icon} text-3xl drop-shadow-sm"></i></div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 flex items-center gap-2">${pkg.amount} Dark Money ${pkg.tag ? `<span class="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded font-black tracking-wider shadow-sm">${pkg.tag}</span>` : ''}</h4>
+                            <p class="text-xs text-amber-500 font-bold flex items-center gap-1"><i class="ph-fill ph-coin"></i> +${pkg.credits} VIP Credits</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800 text-white font-bold py-1 px-3 rounded shadow-inner text-sm relative z-10">$${pkg.price}</div>
+                `;
+                upgradesContainer.appendChild(btn);
+            });
+        }
+
+        function buyVipItem(id) {
+            const item = vipItems.find(i => i.id === id);
+            if (state.credits >= item.cost && (!item.limit || item.owned < item.limit)) {
+                state.credits -= item.cost; 
+                item.owned++;
+                
+                if (item.type === 'multiplier') {
+                    state.vipMultiplier *= item.value;
+                    createFloatingText(window.innerWidth/2, window.innerHeight/2, `VIP MEDIA EMPIRE x${state.vipMultiplier}!`);
+                } else {
+                    createFloatingText(window.innerWidth/2, window.innerHeight/2, `VIP UNLOCKED: ${item.name}!`);
+                }
+                
+                calculateVPS(); 
+                updateUI(); 
+                renderDonorShop(); 
+                saveGame();
+            }
+        }
+        
+        function buyPremiumItem(id) {
+            const item = premiumItems.find(i => i.id === id);
+            if (state.darkMoney >= item.cost && (!item.limit || item.owned < item.limit)) {
+                state.darkMoney -= item.cost;
+                
+                if (item.type === 'warp') { 
+                    let r = state.vps * item.value; 
+                    if(r < 1000) r = 1000; 
+                    state.votes += r; 
+                    createFloatingText(window.innerWidth/2, window.innerHeight/2, `TIME WARP! +${formatCompact(r)} Votes`);
+                }
+                else if (item.type === 'multiplier') { 
+                    state.globalMultiplier *= item.value; 
+                    item.owned++; 
+                    createFloatingText(window.innerWidth/2, window.innerHeight/2, `GLOBAL MULTIPLIER x${state.globalMultiplier}!`);
+                }
+                
+                calculateVPS(); 
+                updateUI(); 
+                renderDonorShop(); 
+                saveGame();
+            }
+        }
+
+        function updateUI() {
+            voteCountEl.innerText = Math.floor(state.votes).toLocaleString();
+            vpsCountEl.innerText = state.vps.toLocaleString();
+            darkMoneyEl.innerText = state.darkMoney.toLocaleString();
+            creditsEl.innerText = state.credits.toLocaleString();
+            const c = getSeatCost(); 
+            seatCostDisplay.innerText = formatCompact(c);
+            const canBuy = state.votes >= c; 
+            
+            buySeatBtn.disabled = !canBuy;
+            buySeatBtn.classList.toggle('opacity-50', !canBuy);
+            buySeatBtn.classList.toggle('cursor-not-allowed', !canBuy);
+            buySeatBtn.classList.toggle('animate-pulse', canBuy);
+            
+            seatCountEl.innerText = (state.campaignPhase === 'senate' ? state.seats : state.houseSeats);
+            
+            document.getElementById('multiplier-badge').classList.toggle('hidden', state.globalMultiplier <= 1);
+            document.getElementById('multiplier-display').innerText = state.globalMultiplier;
+            document.getElementById('prestige-badge').classList.toggle('hidden', state.prestigeMultiplier <= 1);
+            document.getElementById('prestige-display').innerText = state.prestigeMultiplier;
+            document.getElementById('vip-badge').classList.toggle('hidden', state.vipMultiplier <= 1);
+            document.getElementById('vip-display').innerText = state.vipMultiplier;
+
+            const total = state.votes + state.opponentVotes;
+            if (total > 0) {
+                pollPlayerEl.style.width = ((state.votes/total)*100) + '%';
+                pollOpponentEl.style.width = ((state.opponentVotes/total)*100) + '%';
+            }
+
+            if(state.currentTab === 'donor') {
+                premiumItems.forEach(item => {
+                    const btn = document.getElementById(`premium-btn-${item.id}`);
+                    const costText = document.getElementById(`premium-cost-${item.id}`);
+                    if (btn) {
+                        const affordable = state.darkMoney >= item.cost;
+                        const isMaxed = item.limit && item.owned >= item.limit;
+                        btn.disabled = isMaxed || !affordable;
+                        btn.className = `w-full text-left p-3 rounded-lg border-2 transition-all mb-2 flex items-center gap-3 ${
+                            isMaxed ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' :
+                            affordable ? 'bg-purple-50 border-purple-200 hover:bg-purple-100 cursor-pointer shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                        }`;
+                        if (costText) costText.className = `text-sm font-bold flex items-center gap-1 ${affordable && !isMaxed ? 'text-purple-600' : 'text-slate-400'}`;
+                    }
+                });
+                
+                vipItems.forEach(item => {
+                    const btn = document.getElementById(`vip-btn-${item.id}`);
+                    const costText = document.getElementById(`vip-cost-${item.id}`);
+                    if (btn) {
+                        const affordable = state.credits >= item.cost;
+                        const isMaxed = item.limit && item.owned >= item.limit;
+                        btn.disabled = isMaxed || !affordable;
+                        btn.className = `w-full text-left p-3 rounded-lg border-2 transition-all mb-2 flex items-center gap-3 ${
+                            isMaxed ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' :
+                            affordable ? 'bg-amber-50 border-amber-200 hover:bg-amber-100 cursor-pointer shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                        }`;
+                        if (costText) costText.className = `text-sm font-bold flex items-center gap-1 ${affordable && !isMaxed ? 'text-amber-600' : 'text-slate-400'}`;
+                    }
+                });
+            } else {
+                const activeArray = state.currentTab === 'grassroots' ? grassrootsUpgrades : superPacUpgrades;
+                activeArray.forEach((u, index) => {
+                    const btn = document.getElementById(`upgrade-btn-${index}`);
+                    const costText = document.getElementById(`upgrade-cost-${index}`);
+                    if (btn) {
+                        const cost = getCost(u);
+                        const affordable = state.votes >= cost;
+                        
+                        btn.className = `w-full text-left p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                            affordable ? 'bg-white border-blue-200 hover:bg-blue-50 cursor-pointer shadow-sm' : 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed'
+                        }`;
+                        
+                        if (costText) {
+                            costText.className = `text-sm font-bold mt-1 ${affordable ? 'text-green-600' : 'text-red-500'}`;
+                        }
+                    }
+                });
+            }
+        }
+
+        function formatCompact(n) { return Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(n); }
+        function createFloatingText(x,y,t) {
+            const el = document.createElement('div'); el.className = 'floating-text'; el.innerText = t;
+            el.style.left = x + 'px'; el.style.top = y + 'px'; document.body.appendChild(el);
+            setTimeout(()=>el.remove(),1000);
+        }
+
+        function clickNews() {
+            newsPopup.classList.remove('scale-100', 'opacity-100');
+            newsPopup.classList.add('scale-0', 'opacity-0');
+            const reward = Math.max(500, state.vps * 120);
+            state.votes += reward;
+            createFloatingText(window.innerWidth/2, 100, `+${formatCompact(reward)} SCANDAL BONUS!`);
+            updateUI();
+            if(state.currentTab !== 'donor') renderUpgrades();
+            saveGame();
+        }
+
+        function saveGame() {
+            const data = { state, ownedStates, unownedStates, g: grassrootsUpgrades.map(u=>u.owned), s: superPacUpgrades.map(u=>u.owned), p: premiumItems.map(u=>u.owned), v: vipItems.map(u=>u.owned) };
+            localStorage.setItem('cc_save', JSON.stringify(data));
+            if (db && userId) db.collection('artifacts').doc('campaign-clicker').collection('users').doc(userId).set({ data: JSON.stringify(data) });
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem('cc_save');
+            if (saved) {
+                try {
+                    const d = JSON.parse(saved);
+                    // CRITICAL FIX: Safely merge saved state into default state to prevent missing variables
+                    state = { ...state, ...d.state };
+                    
+                    // CRITICAL FIX: Repair NaN corruption from previous broken saves
+                    if (isNaN(state.darkMoney) || state.darkMoney === undefined || state.darkMoney === null) state.darkMoney = 0;
+                    if (isNaN(state.credits) || state.credits === undefined || state.credits === null) state.credits = 0;
+                    if (isNaN(state.vipMultiplier) || state.vipMultiplier === undefined || state.vipMultiplier === null) state.vipMultiplier = 1.0;
+                    if (isNaN(state.globalMultiplier) || state.globalMultiplier === undefined || state.globalMultiplier === null) state.globalMultiplier = 1.0;
+
+                    ownedStates = d.ownedStates || []; 
+                    unownedStates = d.unownedStates || [...allStates];
+                    
+                    if (d.g) grassrootsUpgrades.forEach((u,i)=>u.owned=d.g[i]||0);
+                    if (d.s) superPacUpgrades.forEach((u,i)=>u.owned=d.s[i]||0);
+                    if (d.p) premiumItems.forEach((u,i)=>u.owned=d.p[i]||0);
+                    if (d.v) vipItems.forEach((u,i)=>u.owned=d.v[i]||0);
+                    
+                    if (state.campaignPhase === 'house') {
+                        document.getElementById('seat-label').innerText = "House:"; document.getElementById('seat-target').innerText = "/218";
+                        document.getElementById('map-title').innerText = "House Floor Tracker";
+                    }
+                } catch(e) {
+                    console.error("Save file corrupted. Starting fresh.", e);
+                }
+            }
+        }
+
+        async function loadFromCloud() {
+            if (!db || !userId) return;
+            const doc = await db.collection('artifacts').doc('campaign-clicker').collection('users').doc(userId).get();
+            if (doc.exists) { localStorage.setItem('cc_save', doc.data().data); loadGame(); updateUI(); renderMap(); }
+        }
+
+        function openInfoModal() { infoModal.classList.remove('hidden'); }
+        function closeInfoModal() { infoModal.classList.add('hidden'); }
+        
+        // --- REAL STRIPE CHECKOUT ---
+        function openCheckout(id) { 
+            const pkg = fiatPackages.find(p => p.id === id);
+            if (pkg && pkg.url) {
+                // Attach the Firebase userId to the Stripe link so the webhook knows who paid
+                const finalUrl = pkg.url + '?client_reference_id=' + userId;
+                window.open(finalUrl, '_blank');
+            }
+        }
+        function closeCheckout() { checkoutModal.classList.add('hidden'); }
+        
+        function simulatePurchase() { 
+            if(pendingCheckout) { 
+                state.darkMoney += pendingCheckout.amount; 
+                state.credits += pendingCheckout.credits; 
+                closeCheckout(); 
+                
+                // Re-added visual feedback to confirm purchase worked!
+                createFloatingText(window.innerWidth/2, window.innerHeight/2, `+${pendingCheckout.amount} DM & ${pendingCheckout.credits} Credits!`);
+                
+                updateUI(); 
+                if(state.currentTab === 'donor') renderDonorShop(); 
+                saveGame(); 
+            } 
+        }
+
+        // --- SAFE LOOPS FOR HOT RELOADING ---
+        // This clears any "ghost" loops running in the background of the live preview
+        if (window.gameIntervals) { window.gameIntervals.forEach(clearInterval); }
+        window.gameIntervals = [];
+
+        window.gameIntervals.push(setInterval(() => { 
+            if (typeof buySeatBtn === 'undefined') return; // Safety check against ghost references
+            state.votes += state.vps/10; state.opponentVotes += state.opponentVps/10; updateUI(); 
+        }, 100));
+        window.gameIntervals.push(setInterval(() => { state.opponentVps *= 1.05; saveGame(); }, 5000));
+        window.gameIntervals.push(setInterval(() => { if(Math.random()>0.7) { newsPopup.classList.remove('scale-0','opacity-0'); setTimeout(()=>newsPopup.classList.add('scale-0','opacity-0'),5000); } }, 15000));
+        window.gameIntervals.push(setInterval(() => { calculateActiveEvent(); }, 1000));
+        window.gameIntervals.push(setInterval(() => { if(vipItems.find(i=>i.id==='vip_autoclick').owned > 0) recordClick(); }, 200));
+
+        loadGame(); calculateActiveEvent(); calculateVPS(); updateUI(); renderMap(); switchTab('grassroots');
+    </script>
+</body>
+</html>
